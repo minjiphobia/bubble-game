@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>Bubble Game - Author: Xiaorui WANG</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<style>
+		body {
+			background: #000;
+			padding: 0;
+			margin: 0;
+			font-weight: bold;
+			overflow: hidden;
+		}
+
+		#info {
+			position: absolute;
+			top: 0px;
+			width: 100%;
+			color: #ffffff;
+			padding: 5px;
+			font-family: Monospace;
+			font-size: 13px;
+			text-align: center;
+			z-index: 1000;
+		}
+
+		a {
+			color: #ffffff;
+		}
+
+		#oldie a {
+			color: #0b0
+		}
+	</style>
+</head>
+
+<body>
+
+	<div id="info">Bubble Game
+		<br> By: Xiaorui WANG
+		<br> W/left mouse btn:accelerate forward; S/right mouse btn:accelerate backward
+        <br> SPACE:brake; F:collide/swallow mode; Z/X/C:switch backgrouds; L:show framework; V:FPP/TPP
+	</div>
+
+	<script src="js/three.js"></script>
+
+	<script src="js/shaders/FresnelShader.js"></script>
+
+	<script src="js/Detector.js"></script>
+
+	<script src="js/controls/FlyControls.js"></script>
+
+	<script src="js/objects/Lensflare.js"></script>
+
+	<script src="js/libs/stats.min.js"></script>
+
+	<script src="js/libs/dat.gui.min.js"></script>
+
+	<script>
+		/*
+        add keyboard event: fpp brake split
+        
+        breakdown shader
+
+        breakdown SphereGeoBuffer
+
+        add light source
+
+        collision check
+
+        to be improved:
+
+		currently the program moves the camera instead of the bubble. it may behave weird when executing certain operation
+		*/
+
+		if (!Detector.webgl) Detector.addGetWebGLMessage();
+
+		var container;
+
+		var camera, scene, renderer;
+
+		var FPPcamera;
+
+		//=================camera config================
+		var forward = 0;
+		var backward = 0;
+		var leftward = 0;
+		var rightward = 0;
+		var upward = 0;
+		var downward = 0;
+		var moveAcceleration = 3000;
+		var brakeAcceleration = 6000;
+		var moveSpeed = 0.0;
+		var moveSpeedCap = 9000;
+		var rotSpeed = 0.0;
+		var moveVector = new THREE.Vector3(0, 0, 0);
+		var rotVector = new THREE.Vector3(0, 0, 0);
+		var quat = new THREE.Quaternion();
+		var clock = new THREE.Clock();
+		var zoom = 1000;
+		var zoomin = false;
+		var zoomout = false;
+		var FPP = false;
+		var brakeActivated = false;
+		var collided = false;
+        var collideMod = true;
+
+		//=========================================
+
+		//=================bubble config================
+		//spheres[0] is the main character
+		var spheres = [];
+		var exist = [];
+		//(bubbleSize, bubbleSize + 1)
+		var bubbleSize = 1;
+		var bubbleMoveGround = 20000;
+		var bubbleNum = 10000;
+		var existNum = bubbleNum;
+		var absorbThreshold = 1;
+		var bubbleRadius = 100;
+		var material;
+		var FPPmaterial;
+
+		var disabled = false;
+		//=========================================
+
+		// var texturePath;
+
+		// Cube
+		var textureCube1, textureCube2, textureCube3;
+
+		var mouseX = 0,
+			mouseY = 0;
+
+		var windowHalfX = window.innerWidth / 2;
+		var windowHalfY = window.innerHeight / 2;
+
+		document.addEventListener('mousemove', onDocumentMouseMove, false);
+
+		document.addEventListener('mousedown', onDocumentMouseDown, false);
+		document.addEventListener('mouseup', onDocumentMouseUp, false);
+
+		document.addEventListener('keydown', onDocumentKeyDown, false);
+		document.addEventListener('keyup', onDocumentKeyUp, false);
+
+		document.addEventListener('contextmenu', onDocumentContextMenu, false);
+
+		//=================browser config============
+		// if (document.attachEvent) {
+		//     document.attachEvent('onmousewheel', scrollFunc);
+
+		// }
+
+		// if (document.addEventListener) {
+		//     document.addEventListener('DOMMouseScroll', scrollFunc, false);
+		// }
+
+		// window.onmousewheel = document.onmousewheel = scrollFunc;
+
+		// var scrollFunc = function (event) {
+
+		//     event = event || window.event;
+		//     if(e.wheelDelta){//chrome
+		//         if(parseInt(e.wheelDelta)>0){
+		//             zoom -= 100;
+		//         }else{
+		//             zoom += 100;
+		//         }
+		//     }else if(e.detail){//firefox
+		//         if(parseInt(e.detail)>0){
+		//             zoom += 100;
+		//         }else{
+		//             zoom -= 100;
+		//         }
+		//     }
+		// }
+		///======================================
+
+		// GUI Parameters
+		// Gui parameters
+		var params = {
+			Bridge: function () {
+				scene.background = textureCube1;
+				// cubeMaterial.uniforms["tCube"].value = textureCube1;
+				// cubeMesh.visible = true;
+				// for (var material in sphereMaterials) {
+				// 	material.uniforms["tCube"] = textureCube1;
+				// 	material.needsUpdate = true;
+				// }
+				material.uniforms["tCube"] = textureCube1;
+				FPPmaterial.uniforms["tCube"] = textureCube1;
+				// sphereMaterial.envMap = textureCube;
+				// sphereMaterial.needsUpdate = true;
+			},
+			Sky: function () {
+				// cubeMesh.material = equirectMaterial;
+				// cubeMaterial.uniforms["tCube"].value = textureCube2;
+				// cubeMesh.visible = true;
+				scene.background = textureCube2;
+				// for (var material in sphereMaterials) {
+				// 	material.uniforms["tCube"] = textureCube2;
+				// 	material.needsUpdate = true;
+				// }
+				material.uniforms["tCube"] = textureCube2;
+				FPPmaterial.uniforms["tCube"] = textureCube2;
+				// sphereMaterial.envMap = textureEquirec;
+				// sphereMaterial.needsUpdate = true;
+			},
+			Park: function () {
+				scene.background = textureCube3;
+				// cubeMaterial.uniforms["tCube"].value = textureCube3;
+				// cubeMesh.visible = true;
+				// for (var material in sphereMaterials) {
+				// 	material.uniforms["tCube"] = textureCube3;
+				// 	material.needsUpdate = true;
+				// }
+				material.uniforms["tCube"] = textureCube3;
+				FPPmaterial.uniforms["tCube"] = textureCube3;
+			},
+			// Spherical: function () {
+			// 		cubeMesh.visible = false;
+			// sphereMaterial.envMap = textureSphere;
+			// sphereMaterial.needsUpdate = true;
+			// },
+			// Refraction: false
+			NPCnumber: 10000,
+			initNPC: function () {
+				initBubbles();
+			},
+			moveSpeed: 0.0,
+			boundaryX: -bubbleMoveGround + ':' + bubbleMoveGround,
+			boundaryY: -bubbleMoveGround + ':' + bubbleMoveGround,
+			boundaryZ: -bubbleMoveGround + ':' + bubbleMoveGround,
+			x: 0,
+			y: 0,
+			z: 0,
+			radius:0.0
+		};
+
+		init();
+		animate();
+
+		function init() {
+			// initialize GUI
+			initGui();
+			container = document.createElement('div');
+			document.body.appendChild(container);
+
+			//PerspectiveCamera args: 
+            //1.field of view 
+            //2.aspect ratio 
+            //3.near 
+            //4.far
+			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 100000);
+			camera.position.z = zoom;
+			FPPcamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 100000);
+			FPPcamera.position.z = zoom;
+
+
+			// setTexturePath();
+			/*var path = "textures/cube/Park2/";
+		        var format = '.jpg';
+		        var urls = [
+						path + 'posx' + format, path + 'negx' + format,
+						path + 'posy' + format, path + 'negy' + format,
+						path + 'posz' + format, path + 'negz' + format
+		        ];
+                */
+
+			// var textureCube = new THREE.CubeTextureLoader().load(texturePath);
+			// textureCube.format = THREE.RGBFormat;
+			initCube();
+
+			scene = new THREE.Scene();
+			scene.background = textureCube1;
+
+			initBubbles();
+			// for (var i = 0; i < bubbleNum; i++) {
+			// 	var mesh;
+			// 	if (i == 0) {
+			// 		mesh = new THREE.Mesh(geometry, FPPmaterial);
+			// 	}
+			//     else mesh = new THREE.Mesh(geometry, material);
+
+			//     mesh.position.x = Math.random() * bubbleGenGround - bubbleGenGround / 2;
+			//     mesh.position.y = Math.random() * bubbleGenGround - bubbleGenGround / 2;
+			//     mesh.position.z = Math.random() * bubbleGenGround - bubbleGenGround / 2;
+
+			//     mesh.scale.x = mesh.scale.y = mesh.scale.z = Math.random() * bubbleSize + 1;
+
+			//     scene.add(mesh);
+
+			//     spheres.push(mesh);
+
+			//     exist.push(true);
+			// }
+
+			scene.matrixAutoUpdate = true;
+
+			renderer = new THREE.WebGLRenderer();
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			container.appendChild(renderer.domElement);
+
+			window.addEventListener('resize', onWindowResize, false);
+		}
+
+		function initCube() {
+			// Textures
+			var r1 = "textures/cube/Bridge2/";
+			var urls1 = [r1 + "posx.jpg", r1 + "negx.jpg",
+				r1 + "posy.jpg", r1 + "negy.jpg",
+				r1 + "posz.jpg", r1 + "negz.jpg"
+			];
+			textureCube1 = new THREE.CubeTextureLoader().load(urls1);
+			textureCube1.format = THREE.RGBFormat;
+			textureCube1.mapping = THREE.CubeReflectionMapping;
+			// textureCube1.mapping = THREE.CubeRefractionMapping;
+
+			var r2 = "textures/cube/skybox/";
+			var urls2 = [r2 + "px.jpg", r2 + "nx.jpg",
+				r2 + "py.jpg", r2 + "ny.jpg",
+				r2 + "pz.jpg", r2 + "nz.jpg"
+			];
+			textureCube2 = new THREE.CubeTextureLoader().load(urls2);
+			textureCube2.format = THREE.RGBFormat;
+			textureCube2.mapping = THREE.CubeReflectionMapping;
+			// textureCube2.mapping = THREE.CubeRefractionMapping;
+
+			var r3 = "textures/cube/Park2/";
+			var urls3 = [r3 + "posx.jpg", r3 + "negx.jpg",
+				r3 + "posy.jpg", r3 + "negy.jpg",
+				r3 + "posz.jpg", r3 + "negz.jpg"
+			];
+			textureCube3 = new THREE.CubeTextureLoader().load(urls3);
+			textureCube3.format = THREE.RGBFormat;
+			textureCube3.mapping = THREE.CubeReflectionMapping;
+			// textureCube3.mapping = THREE.CubeRefractionMapping;
+
+			// Materials
+			// var cubeShader1 = THREE.ShaderLib[ "cube" ];
+			// cubeMaterial = new THREE.ShaderMaterial( {
+			// 	fragmentShader: cubeShader1.fragmentShader,
+			// 	vertexShader: cubeShader1.vertexShader,
+			// 	uniforms: cubeShader1.uniforms,
+			// 	depthWrite: false,
+			// 	side: THREE.BackSide
+			// } );
+			// cubeMaterial.uniforms[ "tCube" ].value = textureCube1;
+
+			// // Skybox
+			// cubeMesh = new THREE.Mesh( new THREE.BoxBufferGeometry( 100, 100, 100 ), cubeMaterial );
+			// sceneCube.add( cubeMesh );
+			// sceneCube.background = textureCube1;
+
+		}
+
+		function initBubbles() {
+			for (var mesh in spheres) {
+				scene.remove(spheres[mesh]);
+			}
+			bubbleNum = parseInt(params.NPCnumber);
+			spheres = [];
+			var geometry = new THREE.SphereBufferGeometry(bubbleRadius, 32, 16); //edited
+
+			var shader = THREE.FresnelShader;
+			var uniforms = THREE.UniformsUtils.clone(shader.uniforms);
+
+			uniforms["tCube"].value = textureCube1;
+
+			material = new THREE.ShaderMaterial({
+				uniforms: uniforms,
+				vertexShader: shader.vertexShader,
+				fragmentShader: shader.fragmentShader
+			});
+			FPPmaterial = new THREE.ShaderMaterial({
+				uniforms: uniforms,
+				vertexShader: shader.vertexShader,
+				fragmentShader: shader.fragmentShader
+			});
+
+			for (var i = 0; i < bubbleNum; i++) {
+				var mesh;
+				if (i == 0) {
+					mesh = new THREE.Mesh(geometry, FPPmaterial);
+				} else mesh = new THREE.Mesh(geometry, material);
+
+				mesh.position.x = Math.random() * bubbleMoveGround * 2 - bubbleMoveGround;
+				mesh.position.y = Math.random() * bubbleMoveGround * 2 - bubbleMoveGround;
+				mesh.position.z = Math.random() * bubbleMoveGround * 2 - bubbleMoveGround;
+
+				mesh.scale.x = mesh.scale.y = mesh.scale.z = Math.random() * bubbleSize + 1;
+
+				scene.add(mesh);
+
+				spheres.push(mesh);
+
+				exist.push(true);
+			}
+		}
+
+		// function setTexturePath() {
+
+		//     var dir = "textures/cube/Park2/";
+		//     var format = '.jpg';
+		//     texturePath = [
+		//         dir + 'posx' + format, dir + 'negx' + format,
+		//         dir + 'posy' + format, dir + 'negy' + format,
+		//         dir + 'posz' + format, dir + 'negz' + format
+		//     ];
+		// }
+
+		function onWindowResize() {
+
+			windowHalfX = window.innerWidth / 2;
+			windowHalfY = window.innerHeight / 2;
+
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			FPPcamera.aspect = window.innerWidth / window.innerHeight;
+			FPPcamera.updateProjectionMatrix();
+
+			renderer.setSize(window.innerWidth, window.innerHeight);
+
+		}
+
+		function onDocumentMouseMove(event) {
+            threshold = 50;
+
+			//rotSpeed = 0.0;
+			rotSpeed = Math.sqrt(Math.pow(event.clientX - windowHalfX, 2) + Math.pow(event.clientY - windowHalfY, 2)) / Math.sqrt(Math.pow(windowHalfX, 2) + Math.pow(windowHalfY, 2)) * Math.PI / 6;
+
+			if (event.clientX < windowHalfX - threshold) {
+				leftward = 1;
+				rightward = 0;
+				//rotSpeed += Math.PI / 12 * (windowHalfX - event.clientX) / windowHalfX;
+            } else if (event.clientX > windowHalfX + threshold) {
+				leftward = 0;
+				rightward = 1;
+				//rotSpeed += Math.PI / 12 * (event.clientX - windowHalfX) / windowHalfX;
+            } else {
+				leftward = 0;
+				rightward = 0;
+            }
+			if (event.clientY < windowHalfY - threshold) {
+				upward = 1;
+				downward = 0;
+				//rotSpeed += Math.PI / 12 * (windowHalfY - event.clientY) / windowHalfY;
+            } else if (event.clientY > windowHalfY + threshold) {
+				upward = 0;
+				downward = 1;
+				//rotSpeed += Math.PI / 12 * (event.clientY - windowHalfY) / windowHalfY;
+            } else {
+				upward = 0;
+				downward = 0;
+            }
+
+			rotVector.x = upward - downward;
+			rotVector.y = leftward - rightward;
+		}
+
+		function onDocumentMouseDown(event) {
+
+			container.focus();
+
+			event.preventDefault();
+			event.stopPropagation();
+
+			switch (event.button) {
+				case 0: //left btn
+					//moveSpeed += moveAcceleration;
+					forward = 1;
+					break;
+				case 2: //right btn
+					//moveSpeed -= moveAcceleration;
+					backward = 1;
+					break;
+			}
+
+			moveVector.z = backward - forward;
+
+			rotVector.x = upward - downward;
+			rotVector.y = leftward - rightward;
+		}
+
+		function onDocumentMouseUp(event) {
+
+			event.preventDefault();
+			event.stopPropagation();
+
+			switch (event.button) {
+				case 0: //left btn
+					forward = 0;
+					break;
+				case 2: //right btn
+					backward = 0;
+					break;
+			}
+			moveVector.z = backward - forward;
+
+			rotVector.x = upward - downward;
+			rotVector.y = leftward - rightward;
+		}
+
+		function onDocumentKeyDown(event) {
+
+			switch (event.keyCode) {
+				case 87: //key.W
+					forward = 1;
+					break;
+				case 83: //key.S
+					backward = 1;
+					break;
+                /*
+				case 82: //key.R
+					zoomin = true;
+					break;
+				case 70: //key.F
+					zoomout = true;
+					break;
+                */
+                case 65: //key.A
+                    // do rot
+                    break;
+                case 68: //key.D
+                    // do rot
+                    break;
+				case 86: //key.V
+                    FPP = !FPP
+					break;
+                case 70: //key.F
+                    collideMod = !collideMod;
+                    break;
+				case 32: //key.spacebar
+					brakeActivated = true;
+					break;
+				case 90: // key.Z
+					scene.background = textureCube1;
+					material.uniforms["tCube"] = textureCube1;
+					break;
+				case 88: // key.X
+					scene.background = textureCube2;
+					material.uniforms["tCube"] = textureCube2;
+					break;
+				case 67: // key.C
+					scene.background = textureCube3;
+					material.uniforms["tCube"] = textureCube3;
+					break;
+				case 76: // key.L
+					// alert(FPPmaterial.wireframe);
+					disabled = !disabled;
+					// FPPmaterial.wireframe = !FPPmaterial.wireframe;
+					// FPPmaterial.needsUpdate = true;
+					break;
+			}
+			moveVector.z = backward - forward;
+
+			rotVector.x = upward - downward;
+			rotVector.y = leftward - rightward;
+		}
+
+		function onDocumentKeyUp(event) {
+
+			switch (event.keyCode) {
+				case 87: //key.W
+					forward = 0;
+					break;
+				case 83: //key.S
+					backward = 0;
+					break;
+                /*
+				case 82: //key.R
+					zoomin = false;
+					break;
+				case 70: //key.F
+					zoomout = false;
+					break;
+                */
+				case 32: //key.spacebar
+					brakeActivated = false;
+					break;
+			}
+			moveVector.z = backward - forward;
+
+			rotVector.x = upward - downward;
+			rotVector.y = leftward - rightward;
+		}
+
+		function onDocumentContextMenu(event) {
+			event.preventDefault();
+		}
+
+		// GUI
+		function initGui() {
+			//
+			// var guiSetting = new dat.GUI();
+			// var sceneGui = guiSetting.addFolder('Scenes');
+			// sceneGui.add( params, 'Bridge' );
+			// sceneGui.add( params, 'Sky' );
+			// sceneGui.add( params, 'Park');
+			// guiSetting.add(params, 'NPCnumber', 1, 1000);
+			// guiSetting.add(params, 'initNPC');
+			// gui.add( params, 'Refraction' ).onChange( function( value ) {
+			// 	if ( value ) {
+			// 		// textureEquirec.mapping = THREE.EquirectangularRefractionMapping;
+			// 		textureCube1.mapping = THREE.CubeRefractionMapping;
+			// 		textureCube2.mapping = THREE.CubeRefractionMapping;
+			// 	} else {
+			// 		// textureEquirec.mapping = THREE.EquirectangularReflectionMapping;
+			// 		textureCube1.mapping = THREE.CubeReflectionMapping;
+			// 		textureCube2.mapping = THREE.CubeReflectionMapping;
+			// 	}
+			// 	// sphereMaterial.needsUpdate = true;
+			// } );
+			// guiSetting.open();
+
+			// guiSetting.domElement.style = 'position:absolute;width:100px;height:2000px;top:0px;left:0px';
+
+			var guiShow = new dat.GUI();
+			guiShow.add(params, 'moveSpeed', -moveSpeedCap, moveSpeedCap).listen();
+
+			guiShow.add(params, 'radius').listen();
+
+			var boundaryGui = guiShow.addFolder('boundary');
+			boundaryGui.add(params, 'boundaryX').listen();
+			boundaryGui.add(params, 'boundaryY').listen();
+			boundaryGui.add(params, 'boundaryZ').listen();
+
+			var positionGui = guiShow.addFolder('position');
+			positionGui.add(params, 'x').listen();
+			positionGui.add(params, 'y').listen();
+			positionGui.add(params, 'z').listen();
+
+			var sceneGui = guiShow.addFolder('Scenes');
+			sceneGui.add(params, 'Bridge');
+			sceneGui.add(params, 'Sky');
+			sceneGui.add(params, 'Park');
+			guiShow.add(params, 'NPCnumber', 1, 10000);
+			guiShow.add(params, 'initNPC');
+			guiShow.domElement.style = 'position:absolute;width:100px;height:2000px';
+
+		}
+
+		function animate() {
+
+			requestAnimationFrame(animate);
+
+			render();
+
+		}
+
+		function render() {
+
+			//moveVector.z = backward - forward;
+
+			//rotVector.x = upward - downward;
+			//rotVector.y = leftward - rightward;
+
+			var delta = clock.getDelta();
+
+			if (zoomin)
+				zoom -= 800 * delta;
+			if (zoomout)
+				zoom += 800 * delta;
+
+			if (zoom > 3000)
+				zoom = 3000;
+			if (zoom < 800)
+				zoom = 800;
+
+			if (brakeActivated) {
+				if (moveSpeed < 0)
+					moveSpeed += brakeAcceleration * delta;
+				else
+					moveSpeed -= brakeAcceleration * delta;
+			}
+
+			else {
+				if (forward)
+					moveSpeed += moveAcceleration * delta;
+				if (backward)
+					moveSpeed -= moveAcceleration * delta;
+			}
+
+			if (moveSpeed > moveSpeedCap)
+				moveSpeed = moveSpeedCap;
+			if (moveSpeed < -moveSpeedCap)
+				moveSpeed = -moveSpeedCap;
+
+			checkCollision();
+
+			if (collided) {
+				moveSpeed = -moveSpeed;
+				collided = false;
+			}
+
+			// change moveSpeed in screen
+			params.moveSpeed = moveSpeed;
+
+			var realMove = delta * moveSpeed;
+			var realRot = delta * rotSpeed;
+
+			camera.translateX(moveVector.x * realMove);
+			camera.translateY(moveVector.y * realMove);
+			//camera.translateZ(moveVector.z * realMove);
+
+			camera.translateZ(-1 * realMove);
+
+            //rotVector.x = rotVector.y = (rotVector.x + rotVector.y) / 2; 
+			quat.set(rotVector.x * realRot, rotVector.y * realRot, rotVector.z * realRot, 1).normalize();
+			camera.quaternion.multiply(quat);
+			camera.rotation.setFromQuaternion(camera.quaternion, camera.rotation.order);
+
+			//camera.position.x += (mouseX - camera.position.x) * .05;
+			//camera.position.y += (mouseY - camera.position.y) * .05;
+
+			var timer = 0.00003 * Date.now();
+			for (var i = 1; i < bubbleNum; i++) {
+
+				if (!exist[i])
+					continue;
+
+				var sphere = spheres[i];
+
+				if (i % 3 != 0)
+					sphere.position.x = bubbleMoveGround * Math.cos(timer + i); // * Math.sin(timer + i * 1.2);
+
+				if (i % 3 != 1)
+					sphere.position.y = bubbleMoveGround * Math.sin(timer + i * 1.1); // * Math.sin(timer + i * 1.3)
+
+				if (i % 3 != 2)
+					sphere.position.z = bubbleMoveGround * Math.sin(timer + i * 1.4);
+			}
+
+			var direction = new THREE.Vector3(0, 0, -1);
+			direction.applyQuaternion(camera.quaternion);
+
+			spheres[0].position.x = camera.position.x + direction.x * zoom;
+			spheres[0].position.y = camera.position.y + direction.y * zoom;
+			spheres[0].position.z = camera.position.z + direction.z * zoom;
+
+			// emphasize player's bubble
+			// spheres[0].material.wireframe = FPPmaterial.wireframe;
+			spheres[0].material.wireframe = disabled;
+
+			// update position in screen
+			params.x = spheres[0].position.x;
+			params.y = spheres[0].position.y;
+			params.z = spheres[0].position.z;
+
+			// update radius in screen
+			params.radius = spheres[0].scale.x * bubbleRadius;
+
+			if (FPP) {
+				//camera.position = spheres[0].position;
+				//camera.position.x = camera.position.x + direction.x * zoom;
+				//camera.position.y = camera.position.y + direction.y * zoom;
+				//camera.position.z = camera.position.z + direction.z * zoom;
+				//camera.translateX(direction.x);
+				//camera.translateY(direction.y);
+				//camera.translateZ(direction.z);
+				FPPcamera.translateX(moveVector.x * realMove);
+				FPPcamera.translateY(moveVector.y * realMove);
+				FPPcamera.translateZ(-1 * realMove);
+				FPPcamera.quaternion.multiply(quat);
+				FPPcamera.rotation.setFromQuaternion(camera.quaternion, camera.rotation.order);
+				FPPcamera.position.x = camera.position.x + direction.x * zoom;
+				FPPcamera.position.y = camera.position.y + direction.y * zoom;
+				FPPcamera.position.z = camera.position.z + direction.z * zoom;
+
+				renderer.render(scene, FPPcamera);
+			}
+
+			else {
+				renderer.render(scene, camera);
+			}
+		}
+
+
+		function checkCollision() {
+
+			var major = spheres[0];
+			var majorR = major.scale.x;
+
+			for (var i = 1; i < bubbleNum; i++) {
+
+				if (!exist[i])
+					continue;
+
+				var minor = spheres[i];
+				var minorR = minor.scale.x;
+
+                /*
+				if (major.scale.x < minor.scale.x) {
+					if (distance(major, minor) < bubbleRadius * (majorR + minorR)) { //newhere
+						collided = true;
+					}
+				}
+				else {
+					if (distance(major, minor) < bubbleRadius * major.scale.x) {
+						scene.remove(spheres[i]);
+						spheres[i] = 0
+						exist[i] = false;
+						existNum--;
+						major.scale.x = major.scale.y = major.scale.z = Math.pow(Math.pow(majorR, 3) + Math.pow(minorR, 3), 1/3);
+						//break;
+					}
+				}
+                */
+                // collide
+				if (collideMod) {
+					if (distance(major, minor) < bubbleRadius * (majorR + minorR)) { //newhere
+						collided = true;
+					}
+				}
+                // swallow
+				else {
+					if (distance(major, minor) < bubbleRadius * major.scale.x) {
+						scene.remove(spheres[i]);
+						spheres[i] = 0
+						exist[i] = false;
+						existNum--;
+						major.scale.x = major.scale.y = major.scale.z = Math.pow(Math.pow(majorR, 3) + Math.pow(minorR, 3), 1/3);
+						//break;
+					}
+				}
+			}
+
+			/* checking all the bubbles will cause huge delay. so abandon this part
+			for (var i = 1; i < bubbleNum; i++) {
+
+				if (!exist[i])
+					continue;
+
+				var si = spheres[i]
+				var ri = si.scale.x;
+
+				for (var j = i + 1; j < bubbleNum; j++) {
+
+					if (!exist[j])
+						continue;
+
+					var sj = spheres[j];
+					var rj = sj.scale.x;
+
+					if (distance(si, sj) < bubbleRadius * Math.max(ri, rj)) {
+						if (ri > rj) {
+							scene.remove(spheres[j]);
+							spheres[j] = 0
+							exist[j] = false;
+							existNum--;
+							si.scale.x = si.scale.y = si.scale.z = Math.pow(Math.pow(ri, 3) + Math.pow(rj, 3), 1 / 3);
+						}
+						else {
+							scene.remove(spheres[i]);
+							spheres[i] = 0
+							exist[i] = false;
+							existNum--;
+							sj.scale.x = sj.scale.y = sj.scale.z = Math.pow(Math.pow(ri, 3) + Math.pow(rj, 3), 1 / 3);
+							break;
+						}
+
+						return;
+					}
+				}
+			}
+			*/
+		}
+
+		function distance(pa, pb) {
+			var dx = pa.position.x - pb.position.x;
+			var dy = pa.position.y - pb.position.y;
+			var dz = pa.position.z - pb.position.z;
+			var result = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2) + Math.pow(dz, 2));
+			return result;
+		}
+	</script>
+
+</body>
+
+</html>
